@@ -1,7 +1,7 @@
 # generation of synthetic data
 
 import numpy as np
-import matplotlib.pylab as pl
+
 
 
 def get_sampling_func(num=10, dim=2, mixture=2):
@@ -24,6 +24,7 @@ def get_sampling_func(num=10, dim=2, mixture=2):
 
 
 if __name__ == "__main__":
+    import matplotlib.pylab as pl
     sample_1000 = get_sampling_func(1000, 2, 3)
     data, cluster_centers = sample_1000()
     pl.figure()
