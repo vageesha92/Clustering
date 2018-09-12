@@ -27,6 +27,7 @@ class Point:
 
     def __init__(self, location):
         self.location = location
+        self.predicted_cluster = None
 
     def __str__(self):
         return "Point: location = {}".format(",".join(str(l) for l in self.location))
