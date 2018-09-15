@@ -1,7 +1,7 @@
 # generation of synthetic data
 
 import numpy as np
-
+from sklearn.preprocessing import minmax_scale
 
 class Clusters_Collection:
     def __init__(self, clusters=None):
@@ -17,8 +17,8 @@ class Clusters_Collection:
         points_list = []
         for cluster in self.clusters:
             for point in cluster:
-                points_list.append(point.toarray())
-        return np.vstack(points_list)
+                points_list.append(point)
+        return points_list
 
     def append(self, new_cluster):
         self.clusters.append(new_cluster)
@@ -44,12 +44,31 @@ class Point:
         location = (spread * np.random.randn(1, dim)) + center.toarray()
         return Point(location)
 
+
+def points_list_to_array(points_list):
+    array_list = []
+    for point in points_list:
+        array_list.append(point.toarray())
+    return np.vstack(array_list)
+
+def array_to_points_list_after_scaling(array_of_points):
+    array_of_points = minmax_scale(array_of_points)
+    points_list = []
+    for point_as_array in array_of_points:
+        points_list.append(Point(tuple(point_as_array.tolist())))
+    return points_list
+
 def get_sampling_func(num_total_points=10, dim=2, num_clusters=2, noise=None):
     def sampling_func():
         def get_centers(range_to_split, num_centers):
-            xs = np.linspace(range_to_split[0], range_to_split[1], num_centers).tolist()
-            ys = np.random.randint(range_to_split[0], range_to_split[1], num_centers).tolist()
-            ps = [[x, y] for x, y in zip(xs, ys)]
+            first_dim = np.linspace(range_to_split[0], range_to_split[1], num_centers).tolist()
+            all_dims = [first_dim]
+            for _d in range(1, dim):
+                dim_values = np.random.randint(range_to_split[0], range_to_split[1], num_centers).tolist()
+                all_dims.append(dim_values)
+            #xs = np.linspace(range_to_split[0], range_to_split[1], num_centers).tolist()
+            #ys = np.random.randint(range_to_split[0], range_to_split[1], num_centers).tolist()
+            ps = [p for p in zip(*all_dims)]
             centers = [Point(center) for center in ps]
             return centers
 
@@ -68,6 +87,7 @@ def get_sampling_func(num_total_points=10, dim=2, num_clusters=2, noise=None):
         all_clusters = Clusters_Collection()
         for cluster_index in range(num_clusters):
             # create random points around this cluster
+            # TODO: change number of points in each cluster . Don't use uniform number of points in all clusters
             cluster = [Point.random_around_center(cluster_centers[cluster_index], random_variance()) for num_points in range(num_total_points//num_clusters)]
             # append this cluster to the end of all cluster list
             all_clusters.append(cluster)
@@ -80,8 +100,10 @@ def get_sampling_func(num_total_points=10, dim=2, num_clusters=2, noise=None):
 
 if __name__ == "__main__":
     import matplotlib.pylab as pl
-    sample_1000 = get_sampling_func(1000, 2, 3)
-    data, cluster_centers = sample_1000()
+    samples = get_sampling_func(1000, 2, 5)
+    data, cluster_centers = samples()
+    data = points_list_to_array(data)
+
     pl.figure()
     pl.scatter(data[:, 0], data[:, 1])
     pl.show()

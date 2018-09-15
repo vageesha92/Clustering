@@ -1,4 +1,4 @@
-from generate_data import get_sampling_func
+from generate_data import (Point, get_sampling_func, points_list_to_array, array_to_points_list_after_scaling)
 import numpy as np
 from scipy.spatial.distance import euclidean
 from sklearn.preprocessing import minmax_scale
@@ -88,7 +88,8 @@ def get_closest_center (centers, points):
 if __name__ == '__main__':
     sample_1000 = get_sampling_func(1000, 2, 3)
     data, cluster_centers = sample_1000()
+    data = points_list_to_array(data)
     points = minmax_scale(data)
     points = tuple(map(tuple, points))
-    centroids = k_means(4, points)
-    print(centroids)
+    centroids = k_means(3, points)
+

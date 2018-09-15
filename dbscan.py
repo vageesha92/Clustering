@@ -1,6 +1,6 @@
-from generate_data import Point
+from generate_data import (Point, get_sampling_func, points_list_to_array, array_to_points_list_after_scaling)
 from scipy.spatial.distance import euclidean
-
+import matplotlib.pyplot as pl
 
 def cluster_label(p):
     if p.predicted_cluster is None:
@@ -87,11 +87,23 @@ if __name__ == "__main__":
         Point((10, 0, 0)),
         Point((11, 0, 0))
     ]
+    get_samples = get_sampling_func(200, 2, 3)
+    points_list, _ = get_samples()
+    points_array = points_list_to_array(points_list)
+
+
+    points_list = array_to_points_list_after_scaling(points_array)
+
 
     eps = 0.1
-    minpts = 2
-    for cluster_name, cluster_points in dbscan(points_list, eps, minpts).items():
-        print("Cluster {}".format(cluster_name))
-        for p in cluster_points:
-            print(p)
-        print()
+    minpts = 5
+    dbsscan_output = dbscan(points_list, eps, minpts)
+    pl.figure()
+    colors = ['b', 'g', 'y']
+    for cluster, cluster_points in dbsscan_output.items():
+        cluster_points = points_list_to_array(cluster_points)
+        if cluster != "Noise":
+            pl.scatter(cluster_points[:,0], cluster_points[:, 1], c=colors.pop())
+        else:
+            pl.scatter(cluster_points[:, 0], cluster_points[:, 1], c="r")
+    pl.show()
