@@ -29,6 +29,10 @@ class Point:
         self.location = location
         self.predicted_cluster = None
 
+    def __eq__(self, other):
+        if self.location == other.location:
+            return True
+
     def __str__(self):
         return "Point: location = {}".format(",".join(str(l) for l in self.location))
 
