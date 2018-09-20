@@ -159,20 +159,6 @@ def join(unit1, unit2):
     return Unit(lower, upper)
 
 
-def join_2(unit1, unit2):
-    lower = list(unit1._lower[:-1])
-    upper = list(unit1._upper[:-1])
-    unit1_subspace = unit1.subspace()
-    unit2_subspace = unit2.subspace()
-    if unit1_subspace[-1] < unit2_subspace[-1]:
-        lower.extend([unit1._lower[-1], unit2._lower[-1]])
-        upper.extend([unit1._upper[-1], unit2._upper[-1]])
-    else:
-        lower.extend([unit2._lower[-1], unit1._lower[-1]])
-        upper.extend([unit2._upper[-1], unit1._upper[-1]])
-    return Unit(lower, upper)
-
-
 def projection(unit):
     unit_subspace = unit.subspace()
     dimension_minus_one = len(unit_subspace) - 1
@@ -193,19 +179,6 @@ def filter_candidate_units(candidate_units, dense_units_smaller_dimension):
                 continue
         units_satisfying_monotonicity.append(unit)
     return units_satisfying_monotonicity
-
-
-def run1():
-    points = random_points(200, 2, 3)
-    units = partition([[0, 0], [1, 1]], 0.1)
-    for u in units:
-        u.add_points_within_unit(points)
-    dense_units = list(filter(is_dense, units))
-    for d in dense_units:
-        print(d)
-    # plot_dense_units(dense_units)
-    # plot_not_dense_points(points, dense_units)
-    # pl.show()
 
 
 def get_all_units_of_dimension(units, dimension):
