@@ -2,6 +2,7 @@
 
 import numpy as np
 from sklearn.preprocessing import minmax_scale
+import matplotlib.pyplot as pl
 
 class Clusters_Collection:
     def __init__(self, clusters=None):
@@ -47,6 +48,10 @@ class Point:
         dim = center.dimension()
         location = (spread * np.random.randn(1, dim)) + center.toarray()
         return Point(location)
+
+    def plot(self, **kwargs):
+        point_array = self.toarray()
+        pl.scatter(point_array[0], point_array[1], **kwargs)
 
 
 def points_list_to_array(points_list):
@@ -101,6 +106,12 @@ def get_sampling_func(num_total_points=10, dim=2, num_clusters=2, noise=None):
 
     return sampling_func
 
+def random_points(num_total_points=10, dim=2, num_clusters=2, noise=None):
+    get_samples = get_sampling_func(num_total_points, dim, num_clusters, noise)
+    points_list, _ = get_samples()
+    points_array = points_list_to_array(points_list)
+    points = array_to_points_list_after_scaling(points_array)
+    return points
 
 if __name__ == "__main__":
     import matplotlib.pylab as pl
