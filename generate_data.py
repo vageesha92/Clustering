@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.preprocessing import minmax_scale
 import matplotlib.pyplot as pl
 
+np.random.seed(0)
 class Clusters_Collection:
     def __init__(self, clusters=None):
         if clusters is None:
