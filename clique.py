@@ -34,8 +34,8 @@ class Unit:
             return True
 
     def __str__(self):
-        return "Unit: Lower = {}, Upper = {}, len={}".format(self._lower,
-                                                             self._upper,
+        return "Unit: Lower = {}, Upper = {}, subspace={}, len={}".format(self._lower,
+                                                             self._upper, self.subspace(),
                                                              len(self))
 
     def __contains__(self, item):
@@ -165,8 +165,11 @@ def projection(unit):
     subspaces_minus_one_dimension = combinations(unit_subspace, dimension_minus_one)
     projection_units = []
     for subspace in subspaces_minus_one_dimension:
-        lower = [unit._lower[i-1] for i in subspace]
-        upper = [unit._upper[i-1] for i in subspace]
+        lower = [None for i in range(len(unit._lower))]
+        upper = [None for i in range(len(unit._upper))]
+        for i in subspace:
+            lower[i-1] = unit._lower[i-1]
+            upper[i-1] = unit._upper[i-1]
         projection_units.append(Unit(lower, upper))
     return projection_units
 
