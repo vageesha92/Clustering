@@ -1,8 +1,7 @@
-from generate_data import (Point, get_sampling_func, points_list_to_array, array_to_points_list_after_scaling)
+from generate_data import (Point, get_sampling_func, points_list_to_array, array_to_points_list_after_scaling, random_points)
 import numpy as np
 from scipy.spatial.distance import euclidean
 from sklearn.preprocessing import minmax_scale
-import matplotlib.pylab as pl
 
 
 def current_distance_points_from_centers(clusters):
@@ -14,6 +13,7 @@ def current_distance_points_from_centers(clusters):
 
 
 def k_means(k, points):
+    points = [point.location for point in points]
     def random_centers():
         # choose k centres randomly
         dim = len(points[0])
@@ -28,24 +28,16 @@ def k_means(k, points):
         centroids = {average_point(clusters[center]): clusters[center] for center in centers}
         return centroids
 
-
     centers = random_centers()
     prev_distance_points_from_centers = None
     new_distance_points_from_centers = -1
     while new_distance_points_from_centers != prev_distance_points_from_centers:
         new_clusters = k_means_helper(centers)
-        pl.figure()
         for cluster_center, cluster_points in new_clusters.items():
             if cluster_center == ():
                 continue
-            print("cluster center = {}".format(cluster_center))
-            print("Num of points in cluster = {}".format(len(cluster_points)))
-            pl.scatter(np.array(cluster_points)[:,0], np.array(cluster_points)[:,1])
-            pl.scatter(cluster_center[0], cluster_center[1])
-        print()
         prev_distance_points_from_centers = new_distance_points_from_centers
         new_distance_points_from_centers = current_distance_points_from_centers(new_clusters)
-    pl.show()
     return new_clusters
 
 
@@ -53,6 +45,7 @@ def average_point(points):
     def sum_elementwise():
         return tuple(map(sum, zip(*points)))
     return tuple(coord/len(points) for coord in sum_elementwise())
+
 
 def get_clusters(closest_centers, centers):
     # create list of points for each cluster
@@ -68,8 +61,7 @@ def get_clusters(closest_centers, centers):
     return clusters
 
 
-
-def get_closest_center (centers, points):
+def get_closest_center(centers, points):
     # Assume points and centers are a list of tuples
     closest_center = {}
     for point in points:
@@ -86,10 +78,15 @@ def get_closest_center (centers, points):
 
 
 if __name__ == '__main__':
-    sample_1000 = get_sampling_func(1000, 2, 3)
-    data, cluster_centers = sample_1000()
-    data = points_list_to_array(data)
-    points = minmax_scale(data)
-    points = tuple(map(tuple, points))
-    centroids = k_means(3, points)
-
+    dims = range(2, 102, 2)
+    for num_dimension in dims:
+        #num_dimension = 3
+        actual_num_clusters = 15
+        total_points = 2000
+        points = random_points(total_points, num_dimension, actual_num_clusters)
+        num_clusters_found = 0
+        for i in range(5):
+            centroids = k_means(actual_num_clusters, points)
+            if len(centroids) > num_clusters_found:
+                num_clusters_found = len(centroids)
+        print(num_clusters_found)
