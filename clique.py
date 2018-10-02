@@ -1,19 +1,23 @@
-from itertools import (product, combinations, chain)
-
+from itertools import (product, combinations, chain, tee)
+from multiprocessing import Pool
+from functools import lru_cache, reduce
+from operator import add, attrgetter
 import numpy as np
 import matplotlib.pyplot as pl
-from generate_data import random_points
+from generate_data import random_points, Point
 
 
 class Unit:
-    def __init__(self, lower, upper):
+    def __init__(self, lower, upper, threshold):
         self._lower = lower
         self._upper = upper
         self._points = []
         self.cluster_number = "Undefined"
+        self._threshold = threshold
 
     def is_point_in_unit(self, point):
-        coord_in_range = [((self._lower[coord_index] is None) and True) or ((coord >= self._lower[coord_index]) and (coord < self._upper[coord_index]))
+        coord_in_range = [((self._lower[coord_index] is None) and True) or
+                          ((coord >= self._lower[coord_index]) and (coord < self._upper[coord_index]))
                           for coord_index, coord in enumerate(point.location)]
         return all(coord_in_range)
 
@@ -27,10 +31,12 @@ class Unit:
     def add_points_within_unit(self, points_list):
         for point in points_list:
             if self.is_point_in_unit(point):
+                points_list.remove(point)
                 self._points.append(point)
+        return self
 
-    def is_dense(self, threshold):
-        if len(self._points) >= threshold:
+    def is_dense(self):
+        if len(self) >= self._threshold:
             return True
 
     def __str__(self):
@@ -38,14 +44,8 @@ class Unit:
                                                              self._upper, self.subspace(),
                                                              len(self))
 
-    def __contains__(self, item):
-        return item in self._points
-
     def __repr__(self):
         return str(self)
-
-    def __iter__(self):
-        return iter(self._points)
 
     def __len__(self):
         return len(self._points)
@@ -62,7 +62,7 @@ class Unit:
         pl.plot(x, y, color='k')
 
 
-def partition(space, unit_length):
+def partition(space, unit_length, threshold):
     # space : [[lower values], [upper values]]
     # space = [[0,0], [1,1]]
     # 0 <= unit_length < 1
@@ -79,7 +79,7 @@ def partition(space, unit_length):
             if i < len(marks)-1:
                 interval.append([marks[i], marks[i+1]])
         intervals_list.append(interval)
-    units = []
+    #units = []
     for rectangle in product(*intervals_list):
         lower = []
         upper = []
@@ -92,12 +92,9 @@ def partition(space, unit_length):
                 upper.append(interval[1])
         if all([(((l is None) and (u is None) and True)
                  or (l < u)) for l, u in zip(lower, upper)]):
-            units.append(Unit(lower, upper))
-    return units
-
-
-def is_dense(unit):
-    return unit.is_dense(5)
+            #units.append(Unit(lower, upper))
+            yield Unit(lower, upper, threshold)
+    #return units
 
 
 def plot_dense_units(dense_units):
@@ -114,7 +111,7 @@ def plot_not_dense_points(points, dense_units):
             p.plot(c="grey")
 
 
-def get_units(subspace, num_dimensions, unit_length):
+def get_units(subspace, num_dimensions, unit_length, threshold):
     lower = []
     upper = []
     for i in range(1, num_dimensions+1):
@@ -124,7 +121,7 @@ def get_units(subspace, num_dimensions, unit_length):
         else:
             lower.append(None)
             upper.append(None)
-    return partition([lower, upper], unit_length)
+    return partition([lower, upper], unit_length, threshold)
 
 
 def get_subspaces(num_dimensions):
@@ -156,8 +153,7 @@ def join(unit1, unit2):
     unit2_subspace = unit2.subspace()
     lower[unit2_subspace[-1]-1] = unit2._lower[unit2_subspace[-1]-1]
     upper[unit2_subspace[-1]-1] = unit2._upper[unit2_subspace[-1]-1]
-    return Unit(lower, upper)
-
+    return Unit(lower, upper, unit1._threshold)
 
 def projection(unit):
     unit_subspace = unit.subspace()
@@ -170,18 +166,16 @@ def projection(unit):
         for i in subspace:
             lower[i-1] = unit._lower[i-1]
             upper[i-1] = unit._upper[i-1]
-        projection_units.append(Unit(lower, upper))
+        projection_units.append(Unit(lower, upper, unit._threshold))
     return projection_units
 
 
 def filter_candidate_units(candidate_units, dense_units_smaller_dimension):
-    units_satisfying_monotonicity = []
     for unit in candidate_units:
         for projection_of_unit in projection(unit):
             if projection_of_unit not in dense_units_smaller_dimension:
                 continue
-        units_satisfying_monotonicity.append(unit)
-    return units_satisfying_monotonicity
+        yield unit
 
 
 def get_all_units_of_dimension(units, dimension):
@@ -197,7 +191,6 @@ def find_original_unit_in_units(unit, units):
         if unit == original_unit:
             return original_unit
 
-
 def group_by_subspace(units):
     units_by_subspace = {}
     for unit in units:
@@ -208,34 +201,56 @@ def group_by_subspace(units):
     return units_by_subspace
 
 
-def find_dense_units_by_subspaces(units, num_dimension):
-    units_of_fixed_dimension = get_all_units_of_dimension(units, 1)
-    candidate_units = list(filter(is_dense, units_of_fixed_dimension))
-    all_dense_units = list(candidate_units)
+def join_pair(pair):
+    return join(pair[0], pair[1])
+
+
+def add_points_to_units(units, points):
+    units_by_subspace = group_by_subspace(units)
+    for _units in units_by_subspace.values():
+        points_temp = list(points)
+        [unit.add_points_within_unit(points_temp) for unit in _units]
+    return [u for u_list in units_by_subspace.values() for u in u_list]
+
+
+def find_dense_units_by_subspaces(units, num_dimension, points):
+    def is_dense(unit):
+        return unit.is_dense()
+    units_by_subspaces = {}
+    num_total_points = len(points)
+    units_of_one_dimension = get_all_units_of_dimension(units, 1)
+    units_of_one_dimension = add_points_to_units(units_of_one_dimension, points)
+    candidate_units = list(filter(is_dense, units_of_one_dimension))
+    units_by_subspaces.update(group_by_subspace(candidate_units))
     for iteration in range(1, num_dimension):
         pairs_candidate_units = combinations(candidate_units, 2)
-        new_candidate_units = []
-        for unit1, unit2 in pairs_candidate_units:
-            if can_join_units(unit1, unit2):
-                joined_unit = join(unit1, unit2)
-                original_unit = find_original_unit_in_units(joined_unit, units)
-                new_candidate_units.append(original_unit)
-        new_candidate_units = list(filter(is_dense, new_candidate_units))
+        pairs_to_join = filter(lambda pair: can_join_units(*pair), pairs_candidate_units)
+        new_candidate_units = map(join_pair, pairs_to_join)
         new_candidate_units = filter_candidate_units(new_candidate_units, candidate_units)
-        all_dense_units.extend(new_candidate_units)
-        candidate_units = new_candidate_units
-    units_by_subspaces = group_by_subspace(all_dense_units)
+        new_candidate_units = add_points_to_units(new_candidate_units, points)
+        new_candidate_units = list(filter(is_dense, new_candidate_units))
+        dense_units_by_subspace = group_by_subspace(new_candidate_units)
+        if len(dense_units_by_subspace) > 200:
+            dense_units_by_pruned_subspace = mdl_pruning(dense_units_by_subspace, num_total_points)
+            print("Subspaces of dimension={}, Before pruning = {}, After pruning={}".format(
+                iteration+1, len(dense_units_by_subspace), len(dense_units_by_pruned_subspace)))
+            units_by_subspaces.update(dense_units_by_pruned_subspace)
+            new_candidate_units = reduce(add, dense_units_by_pruned_subspace.values())
+        else:
+            print("Subspaces of dimension={}, {}".format(
+                iteration+1, len(dense_units_by_subspace)))
+            units_by_subspaces.update(dense_units_by_subspace)
+        candidate_units = list(new_candidate_units)
     return units_by_subspaces
 
 
 def get_connected_units(dense_units, units, starting_cluster_number, unit_length):
-
     def neighbour(direction, unit, dimension):
         lower = list(unit._lower)
         upper = list(unit._upper)
         lower[dimension-1] = round(lower[dimension-1] + (unit_length if direction == "right" else -1*unit_length), 1)
         upper[dimension-1] = round(upper[dimension-1] + (unit_length if direction == "right" else -1*unit_length), 1)
-        return find_original_unit_in_units(Unit(lower, upper), units)
+        return find_original_unit_in_units(Unit(lower, upper, unit._threshold), dense_units)
 
     def any_not_visited(units):
         for unit in units:
@@ -243,6 +258,7 @@ def get_connected_units(dense_units, units, starting_cluster_number, unit_length
                 return unit
 
     def depth_first_search(unit, cluster_number):
+        #print("cluster {} : {}".format(cluster_number, unit))
         unit.cluster_number = cluster_number
         unit_subspace = unit.subspace()
         for i, dimension in enumerate(unit_subspace):
@@ -272,30 +288,73 @@ def get_connected_units(dense_units, units, starting_cluster_number, unit_length
     return clusters, current_cluster_number
 
 
-def clique(unit_length=0.1, num_dimension=3):
-    points = random_points(200, num_dimension, 3)
+def mdl_pruning(dense_units_by_subspace, num_total_points):
+    @lru_cache(maxsize=None)
+    def coverage(subspace):
+        dense_units_subspace = (unit for unit in dense_units_by_subspace[subspace] if unit.is_dense())
+        return 100. * np.sum((len(unit) for unit in dense_units_subspace))/float(num_total_points)
+
+    @lru_cache(maxsize=None)
+    def mean_coverage(tuple_of_subspaces):
+        coverages = [coverage(subspace) for subspace in tuple_of_subspaces]
+        return np.ceil(np.mean(coverages))
+
+    @lru_cache(maxsize=None)
+    def deviation(tuple_of_subspaces):
+        return np.ceil(np.fabs([coverage(subspace)-mean_coverage(tuple_of_subspaces) for subspace in tuple_of_subspaces])).tolist()
+
+    def code_length(tuple_of_subspaces):
+        if len(tuple_of_subspaces) == 0:
+            return 0
+        return np.sum(np.log2([mean_coverage(tuple_of_subspaces)] + deviation(tuple_of_subspaces)))
+
+    subspaces = dense_units_by_subspace.keys()
+    if len(subspaces) <= 2:
+        return dense_units_by_subspace
+    sorted_subspaces = sorted(subspaces, key=coverage, reverse=True)
+    encoding_lengths = []
+    for cut_point in range(len(sorted_subspaces)):
+        # don't prune all subspaces
+        if cut_point == 0:
+            encoding_lengths.append(np.nan)
+            continue
+        selected_subspaces = tuple(sorted_subspaces[:cut_point])
+        pruned_subspaces = tuple(sorted_subspaces[cut_point:])
+        encoding_lengths.append(code_length(selected_subspaces) + code_length(pruned_subspaces))
+    min_encoding_length_cut_point = np.nanargmin(encoding_lengths)
+    selected_subspaces = sorted_subspaces[:min_encoding_length_cut_point]
+    return {subspace: dense_units_by_subspace[subspace] for subspace in selected_subspaces}
+
+
+def clique(points, unit_length=0.1, selectivity=0.1, num_dimension=3, find_clusters_in_only_largest_subspace=True):
+    threshold = int(selectivity * len(points))
     subspaces = get_subspaces(num_dimension)
+    one_dimensional_subspaces = subspaces[0]
     units = []
-    for subspaces_per_dimension in subspaces:
-        for subspace in subspaces_per_dimension:
-            units.extend(get_units(subspace, num_dimension, unit_length))
-    for unit in units:
-        unit.add_points_within_unit(points)
-    dense_units_by_subspaces = find_dense_units_by_subspaces(units, num_dimension)
+    for subspace in one_dimensional_subspaces:
+        units.extend(get_units(subspace, num_dimension, unit_length, threshold))
+    dense_units_by_subspaces = find_dense_units_by_subspaces(units, num_dimension, points)
     starting_cluster_number = 1
     connected_units_by_subspace = {}
     for subspace, dense_units in dense_units_by_subspaces.items():
+        if find_clusters_in_only_largest_subspace:
+            largest_subspace = subspaces[-1][0]
+            if subspace != largest_subspace:
+                continue
         clusters_in_subspace, starting_cluster_number = get_connected_units(dense_units, units,
                                                                             starting_cluster_number, unit_length)
         connected_units_by_subspace[subspace] = clusters_in_subspace
-    for subspace, connected_units in connected_units_by_subspace.items():
-        print()
-        print("subspace = {}".format(subspace))
-        for cluster_number, unit_list in connected_units.items():
-            print("cluster_number = {}".format(cluster_number))
-            for u in unit_list:
-                print(u)
+    return connected_units_by_subspace
 
 
 if __name__ == "__main__":
-    clique()
+    import time
+    t_start = time.time()
+    num_dimension = 10
+    actual_num_clusters = 3
+    total_points = 1000
+    points = random_points(total_points, num_dimension, actual_num_clusters)
+    connected_units = clique(points, unit_length=0.1, selectivity=0.005, num_dimension=num_dimension)
+    t_end = time.time()
+    print(list(connected_units.values())[0].keys())
+    print("runtime: {}".format(t_end - t_start))
